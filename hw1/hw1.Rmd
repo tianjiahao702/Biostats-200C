@@ -1,0 +1,199 @@
+---
+title: "Biostat 200C Homework 1"
+subtitle: Due Apr 12 @ 11:59PM
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE)
+```
+
+To submit homework, please upload both RMD and pdf files to CCLE by the deadline.
+
+
+## Q2. (ELMR Chapter 3 Exercise 1) 
+
+A case-control study of esophageal cancer in Ileet-Vilaine, France. 
+```{r}
+data(esoph)
+help(esoph)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+```
+
+```{r}
+#conver to tibble for later use.
+esoph <- esoph %>%
+  as_tibble()
+
+#creat # of subject.
+esoph <- esoph %>%
+  mutate(nsubjects = ncases + ncontrols) %>%
+  print(width = Inf)
+```
+
+### a. Plot the proportion of cases against each predictor using the size of the point to indicate the number of subject as seen in Figure 2.7. Comment on the realtionships seen in the plots.
+
+**Solution:**
+
+
+```{r}
+esoph %>%
+  group_by(agegp) %>%
+  summarize(ncases = sum(ncases), nsubjects = sum(nsubjects)) %>%
+  ggplot(aes(x = agegp, y = 100 * ncases / nsubjects, size = nsubjects)) +
+  geom_point() +
+  labs(x = "Agegp", y = "Proportion of cases") +
+  scale_y_continuous(limits = c(0, 40))
+```
+
+From the plot above, as the age increases, the proportion of cases increases, but at age 75 and
+above, the proportion of cases decreases. Also, the number of subjects only gets to 50. My guess
+is that some of them are dead.
+
+```{r}
+esoph %>%
+  group_by(alcgp) %>%
+  summarize(ncases = sum(ncases), nsubjects = sum(nsubjects)) %>%
+  ggplot(aes(x = alcgp, y = 100 * ncases / nsubjects, size = nsubjects)) +
+  geom_point() +
+  labs(x = "Alcgp", y = "Proportion of cases") +
+  scale_y_continuous(limits = c(0, 80))
+```
+
+From the plot above, as people get more alcohol, the proportion of cases increases, but the
+number of subjects decreases.
+
+```{r}
+esoph %>%
+  group_by(tobgp) %>%
+  summarize(ncases = sum(ncases), nsubjects = sum(nsubjects)) %>%
+  ggplot(aes(x = tobgp, y = 100 * ncases / nsubjects, size = nsubjects)) +
+  geom_point() +
+  labs(x = "Tobgp", y = "Proportion of cases") +
+  scale_y_continuous(limits = c(0, 50))
+```
+
+From the plot above, as the tobacco consumption increases the proportion of cases increases, but
+the number of subjects decreases.
+
+
+### b. Fit a binomial GLM with interactions between all three predictors. Use AIC as a criterion to select a model using the `step` function. Which model is selected?
+
+**Solution:**
+
+```{r}
+biglm <- glm(cbind(ncases, ncontrols) ~ (agegp + alcgp + tobgp)^2, 
+             family = binomial, data = esoph)
+smallm <- step(biglm, trace = TRUE)
+```
+
+From the result, we chose the smallest value of AIC, which is AIC=221.39,
+cbind(ncases, ncontrols) ~ agegp + alcgp + tobgp. Also, no intereaction term.
+
+### c. All three factors are ordered and so special contrasts have been used appropriate for ordered factors involving linear, quadratic and cubic terms. Further simplification of the model may be possible by eliminating some of these terms. Use the `unclass` function to convert the factors to a numerical representation and check whether the model may be simplified.
+
+**Solution:**
+
+```{r}
+biglm2 <- glm(cbind(ncases, ncontrols) ~ 
+               (unclass(agegp) + unclass(alcgp) + unclass(tobgp))^2, 
+             family = binomial, data = esoph)
+smallm2 <- step(biglm2, trace = TRUE)
+```
+
+From the results, it is simplified, because the high AIC is not include here.
+
+
+### d. Use the summary output of the factor model to suggest a model that is slightly more complex than the linear model proposed in the previous question.
+
+**Solution:**
+
+```{r}
+summary(smallm)
+```
+
+From the results, linear term for agegp, alcgp, and tobgp are significant. Quadratic term
+for agegp is significant. And cubic term for alcgp is significant.
+
+```{r}
+finalm <- glm(cbind(ncases, ncontrols) ~ 
+                (unclass(agegp)) + 
+                (unclass(alcgp)) + 
+                (unclass(tobgp)) +
+                I(unclass(agegp)^2), family = binomial, data = esoph)
+summary(finalm)
+```
+
+
+### e. Does your final model fit the data? Is the test you use appropriate for this data?
+
+**Solution:**
+
+```{r}
+pchisq(finalm$null.deviance - finalm$deviance, finalm$df.residual, lower = FALSE)
+```
+
+From the results, the final model fit the data better than the null model.
+
+### f. Check for outliers in your final model.
+
+**Solution:**
+
+```{r}
+library(faraway)
+```
+
+```{r}
+halfnorm(hatvalues(finalm))
+```
+
+```{r}
+esoph %>%
+  slice(c(63, 78))
+```
+
+```{r}
+halfnorm(cooks.distance(finalm))
+```
+
+```{r}
+esoph %>%
+  slice(c(67, 71))
+```
+
+From the plots, groups of 63 and 78 are high leverage. And for groups of 67 and 71 are high 
+influential observations.
+
+### g. What is the predicted effect of moving one category higher in alcohol consumption?
+
+**Solution:**
+
+```{r}
+coef(finalm)
+```
+
+```{r}
+exp(1.0651087 )
+```
+
+By looking at the coefficients, alcohol consumption with one category higher will increase the outcome
+by 1.065 higher with other predictor under control. And odds increase 2.901164.
+
+### h. Compute a 95\% confidence interval for this predicted effect.
+
+**Solution:**
+
+```{r}
+library(gtsummary)
+finalm %>%
+  tbl_regression() %>%
+  bold_labels() %>%
+  bold_p(t = 0.05)
+```
+
+
+
+
+

@@ -1,0 +1,229 @@
+---
+title: "Biostat 200C Homework 3"
+author: Jiahao Tian
+subtitle: Due May 14 @ 11:59PM
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE)
+library(faraway)
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+library(lmtest)
+```
+
+
+## Q1.
+
+The **log-logistic** distribution with the probability density function
+
+$$
+f(y) = \frac{e^{\theta}\lambda y^{\lambda-1}}{(1+e^{\theta}y^{\lambda})^2}
+$$
+is sometimes used for modelling survival times.
+
+- (c) Use R to plot the hazard function for $\lambda=1$ and $\lambda=5$ with $\theta=-5$, $\theta=-2$, and $\theta=1/2$, in one figure.
+
+**Solution:**
+
+
+```{r}
+.hf <- function(y, theta, lambda){
+   fy <- (exp(theta) * lambda * y^(lambda - 1)) / (1 + exp(theta) * y^(lambda))
+  return(fy)
+}
+plot_data <- NULL
+```
+
+```{r}
+for(theta in c(-5, -2, 0.5)){
+  for(lambda in c(1, 5)){
+    plot_data <- rbind(plot_data, data.frame(
+      fy = .hf(y = seq(0, 10, length = 100), theta, lambda),
+      y = seq(0, 10, length = 100), theta_lambda = paste0(theta, ";", lambda)
+      )
+    )
+  }
+  }
+
+ggplot(
+  data = plot_data, aes
+  (x = y, y = fy, group = theta_lambda, color = theta_lambda)) + 
+  geom_line() + theme_bw()
+```
+
+## Q2. ELMR Exercise 7.5
+
+The data arise from a large postal survey on the psychology of debt. The frequency of credit card use `ccarduse` is a three-level factor ranging from never, occasionally to regularly.
+
+```{r}
+data(debt)
+help(debt)
+```
+
+- (a) Declare the response as an ordered factor and make a plot showing the relationship to `prodebt`. Comment on the plot. Use a table or plot to display the relationship between the response and the income group.
+
+**Solution:**
+
+```{r}
+debt0 <- debt %>%
+  mutate(ccarduse_factor = as.factor(ccarduse)) %>%
+  mutate_at(vars(incomegp,house,agegp),ordered)
+summary(debt0$ccarduse_factor)
+```
+
+```{r}
+debt0 %>%
+  ggplot() +
+  geom_boxplot(mapping = aes(
+    x = ccarduse_factor, y=prodebt, fill=ccarduse_factor))
+```
+
+From the boxplot, a higher frequency of a person use credit cards are associated with a higher attitudes
+to debt.
+
+```{r}
+ggplot(debt0 %>% 
+         mutate_at(vars(incomegp), unclass) %>%
+         mutate_at(vars(ccarduse_factor), as.factor), 
+       aes(x = incomegp, color = ccarduse_factor, fill = ccarduse_factor)) + 
+  geom_histogram(position = 'identity') + scale_fill_brewer(palette = "Pastel2")
+```
+
+From the plot, a higher frequency of a person use credit cards are associated with a higher level 
+of income.
+
+- (b) Fit a proportional odds model for credit card use with all the other variables as predictors. What are the two most significant predictors and what is their qualitative effect on the response? What is the least significant predictor?
+
+**Solution:**
+
+```{r}
+library(MASS)
+debt$ccarduse <- as.factor(debt$ccarduse)
+pomod <- polr(ccarduse ~ incomegp + house + children +
+                singpar + agegp + bankacc + bsocacc + manage + 
+                cigbuy + xmasbuy + locintrn + prodebt , data = debt, Hess = TRUE)
+coeftest(pomod)
+```
+
+From the result, `incomegp` and `bankacc` are most significant predictors. And `house` is the 
+least significant predictor.
+ 
+```{r}
+exp(pomod$coefficients)
+```
+
+Interpret: Increase level in income group is associated with a higher odds of using credit cards more often. 
+Interpret: People have have a bank account are associated with a higher odds of using credit cards more
+often.
+
+
+- (c) Use stepwise AIC to select a smaller model than the full set of predictors. You will need to handle the missing values carefully. Report on the qualitative effect of the predictors in your chosen model. Can we conclude that the predictors that were dropped from the model have no relation to the response?
+
+**Solution:**
+```{r}
+debt1 <- debt %>%
+  na.exclude() %>%
+  mutate_at(vars(incomegp, house, agegp), ordered)
+pomod1 <- polr(ccarduse ~ incomegp + house + children +
+                singpar + agegp + bankacc + bsocacc + manage + 
+                cigbuy + xmasbuy + locintrn + prodebt , data = debt1, Hess = TRUE)
+summary(pomod1)
+
+#stepwise
+pomod2 <- step(pomod1)
+summary(pomod2)
+coeftest(pomod2)
+```
+
+```{r}
+exp(pomod2$coefficients)
+```
+
+
+Smaller model: `ccarduse ~ incomegp + children + agegp + bankacc + bsocacc + cigbuy + xmasbuy + prodebt`
+
+Interpret:
+
+1. Increase level in income group is associated with a higher odds of raise one level of credit cards use.
+
+2. Increase number of children in household is associated with a lower odds of increase one level of
+credit cards use.
+
+3. Increase level in age group is associated with a higher odds of raise one level of credit cards use.
+
+4. Compared to people have no bank account, people have a bank account are associated with a higher odds 
+of raise one level of credit cards use.
+
+5. Compared to people have no building society account, people have a building society account are
+associated with a higher odds of raise one level of credit cards use.
+
+6. Compared to people do not buy cigarettes, people who buy cigarettes are associated with a lower odds 
+of raise one level of credit cards use.
+
+7. Compared to people do not buy Christmas presents for children, people who buy Christmas presents for
+children are associated with a higher odds of raise one level of credit cards use.
+
+8. Increase level in attitudes to debt is associated with a higher odds of raise one level of credit 
+cards use.
+
+No, even we dropped those predictor, but its still can relate to the response variable.
+
+- (d) Compute the median values of the predictors in your selected model. At these median values, compare the predicted outcome probabilities for both smokers and nonsmokers.
+
+**Solution:**
+
+```{r}
+debt2 <- data.frame(i = 0)
+for(i in c("incomegp", "children", "agegp", "bankacc", "bsocacc", "cigbuy", 
+           "xmasbuy", "prodebt")){
+  temp <- data.frame(i = quantile(debt1[,i], 0.5, type = 3))
+  debt2 <- cbind(debt2, temp)}
+debt2 <- debt2[,-1]
+names(debt2) <- c("incomegp", "children", "agegp", "bankacc", "bsocacc",
+                  "cigbuy", "xmasbuy", "prodebt")
+```
+
+**Smokers**
+```{r}
+debt2[6] = 1 
+predict(pomod2, debt2, type = "probs")
+```
+
+**Nonsmokers**
+```{r}
+debt2[6] = 0 
+predict(pomod2, debt2, type = "probs")
+```
+
+
+
+- (e) Fit a proportional hazards model to the same set of predictors and recompute the two sets of probabilities from the previous question. Does it make a difference to use this type of model?
+
+**Solution:**
+
+```{r}
+pomod3 = polr(ccarduse ~ incomegp + children + agegp + bankacc +  bsocacc + 
+                cigbuy + xmasbuy + prodebt, 
+              method = "cloglog", data = debt1, Hess = TRUE)
+summary(pomod3)
+```
+
+**Smokers**
+```{r}
+debt2[6] = 1 
+predict(pomod3, debt2, type = "probs")
+```
+
+**Nonsmokers**
+```{r}
+debt2[6] = 0 
+predict(pomod3, debt2, type = "probs")
+```
+
+No, the results compare to the previous question are very similar. So does not make a big
+difference to use this type of model.
+
+

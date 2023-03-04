@@ -1,0 +1,159 @@
+---
+title: "Biostat 200C Homework 4"
+subtitle: Due 11:59PM May 23rd
+author: Jiahao Tian
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE)
+library(tidyverse)
+library(faraway)
+```
+
+2. Calculate the three estimates for the `pulp` example in class, check if your results match with the R output.
+
+**Solution:**
+
+```{r}
+data(pulp)
+help(pulp)
+pulp <- as_tibble(pulp) %>%
+  print(n = Inf)
+```
+
+```{r}
+#mu hat
+mean(pulp$bright)
+
+aovmod <- aov(bright ~ operator, data = pulp) %>%
+  summary()
+
+#sigma (alpha) hat
+(aovmod[1][[1]][[3]][1] - aovmod[1][[1]][[3]][2]) / 5
+
+#sigma (epsilon) hat
+aovmod[1][[1]][[3]][2]
+```
+
+## Q2. ELMR Exercise 11.1 (p251)
+
+The `ratdrink` data consist of 5 weekly measurements of body weight for 27 rats. The first 10 rats are on a control treatment while 7 rats have thyroxine added to their drinking water and 10 rats have thiouracil added to their water.
+
+```{r}
+help("ratdrink")
+```
+
+1. Plot the data showing how weight increases with age on a single panel, taking care to distinguish the three treatment groups. Now create a three-panel plot, one for each group. Discuss what can be seen.
+
+**Solution:**
+
+```{r}
+data("ratdrink")
+ratdrink <- as_tibble(ratdrink)
+```
+
+```{r}
+ratdrink %>%
+  group_by(weeks, treat) %>%
+  summarise(mean = mean(wt)) %>%
+  ggplot() +
+  geom_line(mapping = aes(x = weeks, y = mean, color = treat)) +
+  theme_bw()
+```
+
+```{r}
+ratdrink %>%
+  ggplot() +
+  geom_line(mapping = aes(weeks, wt, group = subject, color=subject)) +
+  facet_wrap(~treat) +
+  theme_bw()
+```
+
+From the plot, in the control group, the rats' weight increases follow when the weeks increase. In the
+thiouracil group, rats' weights do not increase that much compared to the other two groups. In the
+thyroxine group, rats' weights were increased as in the control group, but there is a gap.
+
+
+2. Fit a linear longitudinal model with a random slope and intercept for each rat. Each treatment group should have a different mean line. Give interpretation for the following estimates:
+
+ - The fixed effect intercept term.
+ 
+ - The interaction between thiouracil and week.
+ 
+ - The intercept random effect SD (standard deviation).
+ 
+```{r}
+summary(ratdrink)
+```
+
+ **Solution:**
+ 
+```{r}
+library(lme4)
+library(Matrix)
+mmod <- lmer(wt ~ treat * weeks + (1 + weeks | subject), data = ratdrink)
+summary(mmod)
+```
+
+Interpretation:
+1. The average weight of a rat at week 0 is 52.88 among all treatment groups.
+2. As the average weight increases each week, the average weight in thiouracil group is 9.39 lower than
+the control group.
+3. The average weight for each individul at week 0 has a standard deviation of 5.7 within group.
+
+
+3. Check whether there is a significant treatment effect.
+
+**Solution:**
+
+```{r}
+library(pbkrtest)
+mmod2 <- lmer(wt ~ weeks + (1 + weeks | subject), data = ratdrink, REML = TRUE)
+KRmodcomp(mmod, mmod2)
+```
+
+From the Kenward-Roger approach  F-test results, shows that the treatment has a significant effect
+p- value < .001.
+
+4. Construct diagnostic plots showing the residuals against the fitted values and a QQ plot of the residuals. Comment on the plots.
+
+**Solution:**
+
+```{r}
+library(broom.mixed)
+(diagd <- augment(mmod))
+```
+
+```{r}
+diagd %>%
+  ggplot(mapping = aes(sample = .resid)) +
+  stat_qq() +
+  theme_bw()
+```
+
+```{r}
+diagd %>%
+  ggplot() +
+  geom_point(mapping = aes(x = .fitted, y = .resid), alpha = 0.3) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted", ylab = "Residuals")
+```
+
+From the plots above, the residuals follow a normal distribution, and there is no evidence to show that
+there are outliers. And from the QQ plot, it shows the linearity and no outliers, also close to the 45
+degree. Overall, it is a good model.
+
+
+5. Construct confidence intervals for the parameters of the model. Which random effect terms may not be significant? Is the thyroxine group significantly different from the control group?
+
+**Solution:**
+
+sig02 is a not significant term, becuase it contains 0. From CI of `weeks` and interaction term
+`treatthyroxine:weeks` which both contains 0, so thyroxine group is not significantly different from the
+control group.
+
+```{r}
+confint(mmod, method = "boot")
+```
+

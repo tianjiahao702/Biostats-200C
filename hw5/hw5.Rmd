@@ -1,0 +1,127 @@
+---
+title: "Biostat 200C Homework 5"
+subtitle: Due 11:59PM June 2nd
+author: Jiahao Tian
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE)
+library(tidyverse)
+library(faraway)
+library(mgcv)
+```
+
+## Q1. Doctor visits in Australia, ELMR Exercise 13.4 
+
+```{r}
+data(dvisits)
+help("dvisits")
+```
+
+The `dvisits` data comes from the Australian Health Survey of 1977–78 and consist of
+5190 single adults where young and old have been oversampled. Use `help("dvisits")` to check the variables.
+
+(a) Build a generalized additive model with `doctorco` as the response and `sex`, `age`,
+`agesq`, `income`, `levyplus`, `freepoor`, `freerepa`, `illness`, `actdays`, `hscore`, `chcond1` and `chcond2` as possible predictor variables. Select an appropriate size for your model. (Hint. fit a simpler model first and check some marginal plots.)
+
+**Solution:**
+
+```{r}
+summary(dvisits)
+```
+
+```{r}
+dvisits %>%
+  ggplot(mapping = aes(x = actdays, y = doctorco)) +
+  geom_point(size = 1) +
+  geom_smooth() +
+  theme_bw()
+
+dvisits %>%
+  ggplot(mapping = aes(x = freepoor, y = doctorco)) +
+  geom_point(size = 1) +
+  geom_smooth() +
+  theme_bw()
+
+#Lots of binary, no need to do transformation.
+```
+
+```{r}
+#It is not necessary to use age squared term, when we used age term and transformed it.
+
+dvgam <- gam(doctorco ~ sex + s(age) + s(income) + levyplus + freepoor +
+               freerepa + factor(illness) + s(actdays) + s(hscore) + 
+               chcond1 + chcond2, family = poisson, scale = -1, data = dvisits)
+summary(dvgam)
+```
+
+The variables which are not significant are `levyplus, chcond1, chcond2, freerepa`
+
+The final model; 
+`doctorco ~ sex + age + s(income) + freepoor + factor(illness) + s(actdays) + s(hscore)`
+
+
+(b) Check the diagnostics.
+
+**Solution:**
+
+```{r}
+dvgam2 <- gam(doctorco ~ sex + age + s(income) + factor(illness) +
+                s(actdays) + s(hscore) + freepoor, 
+              family = poisson, scale = -1, data = dvisits)
+anova(dvgam2, dvgam, test = "Chisq")
+```
+
+From the p-value 0.5365, which tells that there is not a significant differences between these two model,
+both of them explain the same variances.
+
+```{r}
+dvisits %>%
+mutate(devres = residuals(dvgam2, type = "deviance"),
+linpred = predict(dvgam2, type = "link")) %>%
+ggplot + geom_point(mapping = aes(x = linpred, y = devres)) +
+  labs(x = "Linear predictor", y = "Deviance residual")
+```
+
+```{r}
+plot(dvgam2, residuals = TRUE)
+```
+
+
+(c) What sort of person would be predicted to visit the doctor the most under your
+selected model?
+
+**Solution:**
+
+```{r}
+summary(dvgam2)
+```
+
+
+We see that the type of patient most likely to visit a doctor:
+
+- female
+- older people
+- low income
+- has recent illness
+- has reduced recent days of activity due to injury or illness
+- has bad health according to the Goldberg scale
+- is covered free by government because of old-age or disability pension
+- is not covered by government because of lower income
+
+
+(d) For the last person in the dataset, compute the predicted probability distribution for
+their visits to the doctor, i.e., give the probability they visit 0,1, 2, etc. times.
+
+**Solution:**
+
+```{r}
+(lastp <- predict(dvgam2, type = "response")[nrow(dvisits)])
+lp <- round(dpois(0 : 4, lastp), 3)
+names(lp) <- 0 : 4
+lp
+```
+
+
+

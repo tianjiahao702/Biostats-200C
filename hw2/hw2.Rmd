@@ -1,0 +1,132 @@
+---
+title: "Biostat 200C Homework 2"
+subtitle: Due Apr 26 @ 11:59PM
+author: Jiahao Tian
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE)
+```
+
+## Q3. Simpson's paradox
+
+The dataset `death` contains data on murder cases in Florida in 1977. The data is cross-classified by the race (black or white) of the victim, of the defendant and whether the death penalty was given.
+
+```{r}
+library(faraway)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+data(death)
+death <- death %>%
+  as_tibble() %>%
+  print(n = Inf)
+```
+
+### 3.1 
+Consider the frequency with which the death penalty is applied to black and white defendants, both marginally and conditionally, with respect to the race of the
+victim. Is this an example of Simpson’s paradox? Are the observed differences in
+the frequency of application of the death penalty statistically significant?
+
+**Solutuon:**
+
+```{r}
+ct <- xtabs(y ~ penalty + defend, data = death)
+prop.table(ct, 1)
+show(ct)
+summary(ct)
+```
+
+```{r}
+cta <- xtabs(y ~ penalty + defend + victim, data = death)
+prop.table(cta, 1)
+show(cta)
+summary(cta)
+```
+
+```{r}
+margin.table(cta, c(1,2))
+```
+
+It is an example of Simpson's paradox. Checking the associations throughout all defend groups, we will 
+see the marginal association where we add over the defend groups is different from the conditional 
+association observed within defend groups.
+
+```{r}
+ct3 <- xtabs(y ~ penalty + defend + victim, data = death) 
+dim(ct3)
+mantelhaen.test(ct3, exact = TRUE)
+```
+
+From the Cochran-Mantel-Haenszel test, the p-value is larger than 0.05, which shows that dependence on
+death penalty and the race of the defendants is not significant.Therefore, the observed differences in the
+frequency of application of the death penalty are not statistically significant.
+
+### 3.2
+Determine the most appropriate dependence model between the variables.
+
+**Solution:**
+
+```{r}
+modi <- glm(y ~ penalty + victim + defend, family = poisson, data = death) 
+summary(modi)
+## it is not independent.
+```
+
+```{r}
+## Joint Independent
+glm(y ~ penalty * victim + defend, family = poisson, data = death) %>% 
+  summary()
+glm(y ~ penalty * defend + victim, family = poisson, data = death) %>% 
+  summary()
+## by assum the ﬁrst two variables are dependent, and jointly independent of the third
+## still lack of fit by looking at the interaction term or residual deviance.
+```
+
+```{r}
+## Conditinal Independence
+glm(y ~  penalty * victim + defend * victim, family = poisson, data = death) %>% 
+  drop1(test = "Chi")
+glm(y ~  penalty * victim + defend * victim, family = poisson, data = death) %>% 
+  summary()
+```
+
+```{r}
+library(gtsummary)
+glm(y ~ penalty * victim + defend * victim, family = poisson, data = death) %>% 
+  step(test = "Chi") %>% 
+  drop1(test = "Chi")
+lmod <- glm(
+  y ~ penalty * victim + defend * victim, family = poisson, data = death)
+lmod %>% 
+  tbl_regression(exponentiate = TRUE, intercept = TRUE)
+```
+
+The most appropriate dependence model is y ~ penalty * victim + defend * victim fitted by poisson
+regression with coefficients shown in the table above. This is a conditional independence model, also,
+shows that this model has the best fit is compatible with our result from the the Cochran-Mantel-Haenszel
+test.
+
+### 3.3
+Fit a binomial regression with death penalty as the response and show the
+relationship to your model in the previous question.
+
+**Solution:**
+
+```{r}
+death1 = cbind(matrix(death$y, ncol = 2, byrow = TRUE),
+               unique(death %>%
+                        select(victim, defend)))
+colnames(death1) [1:2] = c('yes', 'no')
+glm(cbind(yes, no) ~ victim * defend, family = binomial, data = death1) %>%
+  step(test = "Chi") %>%
+  summary()
+```
+
+The final binomial model is penalty ~ victim, retains only main effect. And defend is not a significant predictor for death penalty and it is related with the model selected in the previous question with same
+deviance.
+
+
+
+  
